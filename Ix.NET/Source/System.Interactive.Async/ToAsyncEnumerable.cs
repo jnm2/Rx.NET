@@ -20,20 +20,32 @@ namespace System.Linq
                 var e = source.GetEnumerator();
 
                 return Create(
-                    ct => Task.Run(() =>
+                    ct =>
                     {
-                        var res = false;
-                        try
+                        var tcs = new TaskCompletionSource<bool>();
+                        ct.Register(() => tcs.TrySetCanceled());
+
+                        Task.Run(() =>
                         {
-                            res = e.MoveNext();
-                        }
-                        finally
-                        {
-                            if (!res)
-                                e.Dispose();
-                        }
-                        return res;
-                    }, ct),
+                            var res = false;
+                            try
+                            {
+                                res = e.MoveNext();
+                                tcs.TrySetResult(res);
+                            }
+                            catch (Exception ex)
+                            {
+                                tcs.TrySetException(ex);
+                            }
+                            finally
+                            {
+                                if (!res)
+                                    e.Dispose();
+                            }
+                        }, ct);
+
+                        return tcs.Task;
+                    },
                     () => e.Current,
                     () => e.Dispose()
                 );
